@@ -27,14 +27,14 @@ def download_resources():
     for resource_id, resource_path in resources.items():
         try:
             nltk.data.find(resource_path)
-            print(f"✅ '{resource_id}' is already downloaded.")
+            print(f" '{resource_id}' is already downloaded.")
         except LookupError:
-            print(f"⚠️ '{resource_id}' not found. Downloading now...")
+            print(f" '{resource_id}' not found. Downloading now...")
             all_good = False
             try:
                 nltk.download(resource_id)
             except Exception as e:
-                print(f"❌ Failed to download '{resource_id}': {e}")
+                print(f"Failed to download '{resource_id}': {e}")
                 print("Please check your internet connection and try again.")
                 print("You might also need to run this with administrator/sudo privileges.")
                 return
