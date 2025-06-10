@@ -1,18 +1,19 @@
 # Real Estate Price Range Prediction Model
-# This script creates a machine learning model to predict property price ranges using XGBoost
+# This script creates a machine learning model to predict property price ranges using Random Forest
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split, cross_val_score, RandomizedSearchCV
 from sklearn.preprocessing import LabelEncoder, StandardScaler, OneHotEncoder
-from xgboost import XGBClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, accuracy_score
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 import joblib
 import warnings
+import os
 warnings.filterwarnings('ignore')
 
 plt.style.use('default')
@@ -21,10 +22,9 @@ sns.set_palette("husl")
 def load_and_explore_data():
     """Load and perform initial exploration of the dataset"""
     print("=" * 60)
-    print("REAL ESTATE PRICE PREDICTION MODEL - XGBoost")
+    print("REAL ESTATE PRICE PREDICTION MODEL - Random Forest")
     print("=" * 60)
     
-    # Load the dataset
     df = pd.read_csv('data.csv')
     
     print(f"Dataset shape: {df.shape}")
@@ -57,7 +57,7 @@ def clean_and_engineer_features(df):
     
     numerical_cols = ['lotSizeSqFt', 'avgSchoolRating', 'MedianStudentsPerTeacher', 
                       'numOfBathrooms', 'numOfBedrooms', 'yearBuilt', 'garageSpaces', 
-                      'numOfPatioAndPorchFeatures']
+                      'numOfPatioAndPorchFeatures', 'latitude', 'longitude']
     
     for col in numerical_cols:
         if col in df_processed.columns:
@@ -82,12 +82,16 @@ def clean_and_engineer_features(df):
     return df_processed
 
 def visualize_data(df):
-    """Create visualizations for data exploration"""
+    """Create visualizations for data exploration and save them to disk."""
     print("\n" + "=" * 30)
     print("DATA VISUALIZATION")
     print("=" * 30)
     
-    # Price range distribution
+    # Ensure plots directory exists
+    if not os.path.exists('plots'):
+        os.makedirs('plots')
+
+    #Price range distribution
     plt.figure(figsize=(15, 5))
     
     plt.subplot(1, 3, 1)
@@ -101,7 +105,7 @@ def visualize_data(df):
     plt.pie(price_counts.values, labels=price_counts.index, autopct='%1.1f%%')
     plt.title('Price Range Percentage')
     
-    # Geographic distribution
+    #Geographic distribution
     plt.subplot(1, 3, 3)
     scatter = plt.scatter(df['longitude'], df['latitude'], 
                          c=pd.Categorical(df['priceRange']).codes, 
@@ -112,19 +116,11 @@ def visualize_data(df):
     plt.colorbar(scatter)
     
     plt.tight_layout()
-    plt.show()
     
-    # Feature distributions by price range
-    plt.figure(figsize=(18, 12))
-    key_features = ['numOfBedrooms', 'numOfBathrooms', 'lotSizeSqFt', 'avgSchoolRating', 'property_age', 'total_rooms']
-    
-    for i, feature in enumerate(key_features):
-        plt.subplot(2, 3, i+1)
-        df.boxplot(column=feature, by='priceRange', ax=plt.gca())
-        plt.title(f'{feature} by Price Range')
-        plt.suptitle('')  # Remove automatic title
-    
-    plt.tight_layout()
+    plot_path = 'plots/data_visualization.png'
+    plt.savefig(plot_path)
+    print(f"Data visualization plot saved to {plot_path}")
+
     plt.show()
 
 def prepare_ml_data(df):
@@ -154,15 +150,12 @@ def prepare_ml_data(df):
             ('cat', categorical_transformer, categorical_features)
         ])
     
-    print(f"Features for ML: {X.columns.tolist()}")
-    print(f"Target classes: {y.unique()}")
-    
     return X, y, preprocessor, categorical_features, numerical_features
 
-def train_xgboost_model(X, y, preprocessor):
-    """Train XGBoost model and evaluate performance"""
+def train_model(X, y, preprocessor):
+    """Train Random Forest model with hyperparameter tuning and evaluate performance"""
     print("\n" + "=" * 30)
-    print("XGBOOST MODEL TRAINING")
+    print("RANDOM FOREST MODEL TRAINING WITH HYPERPARAMETER TUNING")
     print("=" * 30)
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
@@ -170,67 +163,87 @@ def train_xgboost_model(X, y, preprocessor):
     print(f"Training set size: {X_train.shape}")
     print(f"Test set size: {X_test.shape}")
     
-    # Create XGBoost model with optimized parameters
-    xgb_model = XGBClassifier(
-        n_estimators=200,
-        max_depth=6,
-        learning_rate=0.1,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        random_state=42,
-        eval_metric='mlogloss',
-        verbosity=0
-    )
-    
-    # Create pipeline
     pipeline = Pipeline([
         ('preprocessor', preprocessor),
-        ('classifier', xgb_model)
+        ('classifier', RandomForestClassifier(random_state=42, n_jobs=-1))
     ])
+
+    # Define the parameter space for RandomizedSearchCV
+    param_dist = {
+        'classifier__n_estimators': [100, 200, 300, 400],
+        'classifier__max_depth': [10, 20, 30, None],
+        'classifier__min_samples_leaf': [1, 2, 4],
+        'classifier__min_samples_split': [2, 5, 10],
+        'classifier__bootstrap': [True, False]
+    }
+
+    print("Performing Randomized Search with Cross-Validation...")
+    print("This may take a few minutes...")
     
-    print("Training XGBoost model...")
-    pipeline.fit(X_train, y_train)
+    random_search = RandomizedSearchCV(
+        pipeline, 
+        param_distributions=param_dist,
+        n_iter=25,  # Number of parameter settings that are sampled
+        cv=3,       # 3-fold cross-validation
+        verbose=1, 
+        random_state=42, 
+        n_jobs=-1,
+        scoring='accuracy'
+    )
     
-    # Cross-validation
-    print("Performing cross-validation...")
-    cv_scores = cross_val_score(pipeline, X_train, y_train, cv=5, scoring='accuracy')
+    random_search.fit(X_train, y_train)
     
-    # Test predictions
-    print("Making predictions on test set...")
-    y_pred = pipeline.predict(X_test)
-    y_pred_proba = pipeline.predict_proba(X_test)
+    print("\nBest parameters found:")
+    print(random_search.best_params_)
+    
+    best_model = random_search.best_estimator_
+    
+    print("\nMaking predictions on test set with the best model...")
+    y_pred = best_model.predict(X_test)
+    y_pred_proba = best_model.predict_proba(X_test)
     test_accuracy = accuracy_score(y_test, y_pred)
     
-    print(f"\n📊 MODEL PERFORMANCE:")
-    print(f"Cross-Validation Accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
-    print(f"Test Accuracy: {test_accuracy:.4f}")
-    
-    return pipeline, X_test, y_test, y_pred, y_pred_proba, cv_scores
+    # Re-evaluate CV scores on the best model for a consistent final metric
+    print("\nPerforming final cross-validation on the best model...")
+    cv_scores = cross_val_score(best_model, X_train, y_train, cv=5, scoring='accuracy')
 
-def analyze_xgboost_model(model, X_test, y_test, y_pred, y_pred_proba, cv_scores):
-    """Analyze the XGBoost model performance in detail"""
+    print(f"\n📊 BEST MODEL PERFORMANCE:")
+    print(f"Final Cross-Validation Accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
+    print(f"Final Test Accuracy: {test_accuracy:.4f}")
+    
+    return best_model, X_test, y_test, y_pred, y_pred_proba, cv_scores
+
+def analyze_model_performance(model, X_test, y_test, y_pred, y_pred_proba, cv_scores):
+    """Analyze the model performance in detail and save plots."""
     print("\n" + "=" * 30)
     print("DETAILED MODEL ANALYSIS")
     print("=" * 30)
     
-    # Performance metrics
+    if not os.path.exists('plots'):
+        os.makedirs('plots')
+
     test_accuracy = accuracy_score(y_test, y_pred)
+    report = classification_report(y_test, y_pred, output_dict=True)
+    weighted_avg = report.get('weighted avg', {})
+    precision = weighted_avg.get('precision', 0)
+    recall = weighted_avg.get('recall', 0)
+    f1 = weighted_avg.get('f1-score', 0)
+
+    print(f"Model: Random Forest Classifier")
+    print(f"Test Accuracy: {test_accuracy:.4f}")
+    print(f"Weighted Precision: {precision:.4f}")
+    print(f"Weighted Recall: {recall:.4f}")
+    print(f"Weighted F1-Score: {f1:.4f}")
+    print(f"CV Mean Accuracy: {cv_scores.mean():.4f}")
+    print(f"CV Std: {cv_scores.std():.4f}")
     
-    print(f"✅ Final Model: XGBoost Classifier")
-    print(f"✅ Test Accuracy: {test_accuracy:.4f}")
-    print(f"✅ CV Mean Accuracy: {cv_scores.mean():.4f}")
-    print(f"✅ CV Std: {cv_scores.std():.4f}")
-    
-    # Classification report
     print("\n📋 Detailed Classification Report:")
     print(classification_report(y_test, y_pred))
     
-    # Confidence analysis
     max_probabilities = np.max(y_pred_proba, axis=1)
     avg_confidence = np.mean(max_probabilities)
-    print(f"\n🎯 Average Prediction Confidence: {avg_confidence:.4f} ({avg_confidence:.1%})")
+    print(f"\nAverage Prediction Confidence: {avg_confidence:.4f} ({avg_confidence:.1%})")
     
-    # Confidence by prediction
     confidence_by_class = {}
     for i, class_name in enumerate(model.classes_):
         mask = y_pred == class_name
@@ -239,54 +252,27 @@ def analyze_xgboost_model(model, X_test, y_test, y_pred, y_pred_proba, cv_scores
             confidence_by_class[class_name] = class_confidence
             print(f"   {class_name}: {class_confidence:.3f}")
     
-    # Visualizations
-    plt.figure(figsize=(15, 10))
-    
-    # Confusion Matrix
-    plt.subplot(2, 3, 1)
-    cm = confusion_matrix(y_test, y_pred)
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=model.classes_,
-                yticklabels=model.classes_)
-    plt.title('Confusion Matrix')
-    plt.ylabel('True Label')
-    plt.xlabel('Predicted Label')
-    
+    plt.figure(figsize=(20, 8))
+
     # Feature Importance
-    plt.subplot(2, 3, 2)
-    if hasattr(model.named_steps['classifier'], 'feature_importances_'):
-        # Get feature names after preprocessing
-        feature_names = (model.named_steps['preprocessor']
-                        .named_transformers_['num'].get_feature_names_out().tolist() +
-                        model.named_steps['preprocessor']
-                        .named_transformers_['cat'].get_feature_names_out().tolist())
+    plt.subplot(1, 3, 2)
+    try:
+        # Get feature names from the preprocessor
+        cat_features = model.named_steps['preprocessor'].transformers_[1][1].get_feature_names_out()
+        num_features = model.named_steps['preprocessor'].transformers_[0][2]
+        all_features = list(num_features) + list(cat_features)
         
         importances = model.named_steps['classifier'].feature_importances_
-        indices = np.argsort(importances)[::-1][:15]  # Top 15 features
+        feature_importance_df = pd.DataFrame({'feature': all_features, 'importance': importances})
+        feature_importance_df = feature_importance_df.sort_values('importance', ascending=False).head(15)
         
-        plt.barh(range(len(indices)), importances[indices])
-        plt.yticks(range(len(indices)), [feature_names[i] for i in indices])
+        sns.barplot(x='importance', y='feature', data=feature_importance_df)
         plt.title('Top 15 Feature Importances')
-        plt.gca().invert_yaxis()
-    
-    # Accuracy by Price Range
-    plt.subplot(2, 3, 5)
-    accuracy_by_class = []
-    class_names = []
-    for class_name in model.classes_:
-        mask = y_test == class_name
-        if np.any(mask):
-            class_accuracy = accuracy_score(y_test[mask], y_pred[mask])
-            accuracy_by_class.append(class_accuracy)
-            class_names.append(class_name)
-    
-    plt.bar(range(len(class_names)), accuracy_by_class)
-    plt.xticks(range(len(class_names)), class_names, rotation=45)
-    plt.title('Accuracy by Price Range')
-    plt.ylabel('Accuracy')
-    
+    except Exception as e:
+        print(f"Could not generate feature importance plot: {e}")
+
     #Prediction vs Actual scatterplot
-    plt.subplot(2, 3, 6)
+    plt.subplot(1, 3, 3)
     price_mapping = {price: i for i, price in enumerate(model.classes_)}
     y_test_numeric = [price_mapping[price] for price in y_test]
     y_pred_numeric = [price_mapping[price] for price in y_pred]
@@ -300,9 +286,14 @@ def analyze_xgboost_model(model, X_test, y_test, y_pred, y_pred_proba, cv_scores
     plt.yticks(range(len(model.classes_)), model.classes_, rotation=45)
     
     plt.tight_layout()
+    
+    plot_path = 'plots/model_performance_analysis.png'
+    plt.savefig(plot_path)
+    print(f"Model performance plot saved to {plot_path}")
+
     plt.show()
     
-    return test_accuracy, avg_confidence
+    return test_accuracy, avg_confidence, precision, recall, f1
 
 def create_prediction_function(model):
     """Create a function for making predictions on new data"""
@@ -334,16 +325,16 @@ def create_prediction_function(model):
     
     return predict_price_range
 
-def save_model(model, categorical_features, numerical_features):
+def save_model(model):
     """Save the trained model"""
     print("\n" + "=" * 20)
     print("SAVING MODEL")
     print("=" * 20)
     
-    model_filename = 'best_price_prediction_model_xgboost.pkl'
+    model_filename = 'best_price_prediction_random_forest.pkl'
     joblib.dump(model, model_filename)
     
-    print(f"✅ Model saved as: {model_filename}")
+    print(f"Model saved as: {model_filename}")
     
     return model_filename
 
@@ -357,22 +348,24 @@ def main():
     
     X, y, preprocessor, categorical_features, numerical_features = prepare_ml_data(df_processed)
     
-    model, X_test, y_test, y_pred, y_pred_proba, cv_scores = train_xgboost_model(X, y, preprocessor)
+    model, X_test, y_test, y_pred, y_pred_proba, cv_scores = train_model(X, y, preprocessor)
     
-    test_accuracy, avg_confidence = analyze_xgboost_model(model, X_test, y_test, y_pred, y_pred_proba, cv_scores)
+    test_accuracy, avg_confidence, precision, recall, f1 = analyze_model_performance(model, X_test, y_test, y_pred, y_pred_proba, cv_scores)
     
     predict_price_range = create_prediction_function(model)
     
-    # 9. Save model
-    model_filename = save_model(model, categorical_features, numerical_features)
+    model_filename = save_model(model)
     
     print("\n" + "=" * 60)
-    print("🎉 XGBOOST MODEL TRAINING COMPLETED SUCCESSFULLY!")
+    print("MODEL TRAINING COMPLETED SUCCESSFULLY!")
     print("=" * 60)
-    print(f"✅ Model: XGBoost Classifier")
-    print(f"✅ Test Accuracy: {test_accuracy:.4f}")
-    print(f"✅ Average Confidence: {avg_confidence:.4f}")
-    print(f"✅ Model saved as: {model_filename}")
+    print(f"Model: Random Forest Classifier")
+    print(f"Test Accuracy: {test_accuracy:.4f}")
+    print(f"Weighted Precision: {precision:.4f}")
+    print(f"Weighted Recall: {recall:.4f}")
+    print(f"Weighted F1-Score: {f1:.4f}")
+    print(f"Average Confidence: {avg_confidence:.4f}")
+    print(f"Model saved as: {model_filename}")
     print("=" * 60)
     
     return model, predict_price_range

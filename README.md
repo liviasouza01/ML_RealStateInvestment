@@ -1,11 +1,11 @@
 # Real Estate Price Range Prediction Model
 
-A comprehensive machine learning solution for predicting real estate property price ranges based on property characteristics using XGBoost.
+A comprehensive machine learning solution for predicting real estate property price ranges based on property characteristics using Random Forest.
 
 ## Overview
 
 This project implements a complete machine learning pipeline that:
-- Trains an XGBoost classification model on real estate data.
+- Trains a Random Forest classification model on real estate data.
 - Provides a production-ready deployment class with comprehensive testing.
 - Includes a module for Natural Language Processing (NLP) analysis on property descriptions.
 
@@ -15,10 +15,12 @@ This project implements a complete machine learning pipeline that:
 ML_RealStateInvestment/
 ├── data.csv                                    # Training dataset
 ├── requirements.txt                            # Python dependencies
-├── model_training.py                           # Main model training script (XGBoost)
+├── setup_nltk.py                               # Downloads NLTK data models
+├── model_training.py                           # Main model training script (Random Forest)
 ├── model_deployment.py                         # Production deployment and testing
 ├── nlp_implementation.py                       # NLP analysis of property descriptions
-├── best_price_prediction_model_xgboost.pkl     # Trained XGBoost model (generated)
+├── best_price_prediction_random_forest.pkl     # Trained Random Forest model (generated)
+├── plots/                                        # Directory for saved plots (generated)
 └── README.md                                   # This file
 ```
 
@@ -26,16 +28,16 @@ ML_RealStateInvestment/
 
 ### 1. Create a Virtual Environment
 
-It is highly recommended to use a virtual environment to manage dependencies and avoid conflicts.
+It is highly recommended to use a virtual environment to manage dependencies and avoid conflicts. From the root directory of the project:
 
 ```bash
-# Create the virtual environment
+#Create the virtual environment
 python3 -m venv .venv
 
-# Activate the virtual environment
-# On macOS and Linux:
+#Activate the virtual environment
+#On macOS and Linux:
 source .venv/bin/activate
-# On Windows:
+#On Windows:
 # .\.venv\Scripts\activate
 ```
 
@@ -44,18 +46,34 @@ source .venv/bin/activate
 Once your virtual environment is activated, install the required Python packages.
 
 ```bash
-pip install -r requirements.txt
+pip install -r ML_RealStateInvestment/requirements.txt
 ```
 
-### 3. Train the Model (Optional - Model Already Provided)
+### 3. Change to the Project Directory
 
-This script trains the XGBoost model and saves it as `best_price_prediction_model_xgboost.pkl`.
+All subsequent commands should be run from within the `ML_RealStateInvestment` directory.
+
+```bash
+cd ML_RealStateInvestment
+```
+
+### 4. Setup NLTK Data Models
+
+Run the following script once to download the required data models for text analysis.
+
+```bash
+python setup_nltk.py
+```
+
+### 5. Train the Model (Optional - Model Already Provided)
+
+This script trains the Random Forest model and saves it as `best_price_prediction_random_forest.pkl`.
 
 ```bash
 python model_training.py
 ```
 
-### 4. Test the Deployed Model
+### 6. Test the Deployed Model
 
 This script tests the trained model against a sample of the training data to verify its performance.
 
@@ -63,7 +81,7 @@ This script tests the trained model against a sample of the training data to ver
 python model_deployment.py
 ```
 
-### 5. Run NLP Analysis on Property Descriptions
+### 7. Run NLP Analysis on Property Descriptions
 
 This script analyzes the text descriptions from `data.csv` to find correlations with price. It can optionally use the OpenAI API for enhanced analysis.
 
@@ -80,10 +98,10 @@ Use the `RealEstatePricePredictor` class from `model_deployment.py` for predicti
 ```python
 from model_deployment import RealEstatePricePredictor
 
-# Initialize predictor (loads the .pkl model)
+#Initialize predictor (loads the .pkl model)
 predictor = RealEstatePricePredictor()
 
-# Example property data
+#Example property data
 property_data = {
     'city': 'austin',
     'homeType': 'Single Family',
@@ -100,7 +118,7 @@ property_data = {
     'numOfBedrooms': 4
 }
 
-# Make prediction
+#Make prediction
 result = predictor.predict_single(property_data)
 
 if result['success']:
@@ -151,7 +169,7 @@ The model automatically creates additional features for training and prediction:
 
 ### Model Pipeline
 - **Preprocessing**: `StandardScaler` for numerical features, `OneHotEncoder` for categorical.
-- **Algorithm**: `XGBClassifier` with optimized hyperparameters.
+- **Algorithm**: `RandomForestClassifier` with optimized hyperparameters.
 - **Validation**: 5-fold cross-validation during training.
 
 ## NLP Analysis
@@ -182,4 +200,7 @@ results = test_against_training_data(predictor, sample_size=200)
 
 ### Test Results (on 200 samples)
 - **Overall Accuracy**: ~67.0%
+- **Weighted F1-Score**: ~0.66
+- **Weighted Precision**: ~0.66
+- **Weighted Recall**: ~0.67
 - **Average Confidence**: ~57%

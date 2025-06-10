@@ -30,7 +30,7 @@ class RealEstatePricePredictor:
         
         # Default path
         if model_path is None:
-            model_path = 'best_price_prediction_model_xgboost.pkl'
+            model_path = 'best_price_prediction_random_forest.pkl'
             
         self.model_path = model_path
         
@@ -212,8 +212,8 @@ class RealEstatePricePredictor:
             return {'error': 'Model not loaded'}
         
         return {
-            'model_name': 'XGBoost',
-            'model_type': 'XGBClassifier',
+            'model_name': 'Random Forest',
+            'model_type': 'RandomForestClassifier',
             'price_classes': list(self.model.classes_),
             'model_loaded': self.is_loaded,
             'model_path': self.model_path,
